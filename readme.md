@@ -1,0 +1,9 @@
+# 项目介绍 
+大连理工大学新版校园网登录系统 一键登录脚本
+# 使用方法
+1. 克隆项目
+2. 安装依赖
+  1. [requests](https://pypi.org/project/requests/)
+  2. [PyExecJS](https://pypi.org/project/PyExecJS/)
+3. 修改config.ini中的学号和密码
+4. 运行login.py，即可登录校园网
