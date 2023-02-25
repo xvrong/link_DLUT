@@ -1,8 +1,13 @@
-import requests
 import re
-import execjs
 import os
 from configparser import ConfigParser
+from time import sleep
+import logging
+import platform
+
+import execjs
+import requests
+from ping3 import ping
 
 current_path = os.path.dirname(os.path.abspath(__file__))
 os.chdir(current_path)
@@ -12,27 +17,62 @@ cfg.read("config.ini", encoding='utf-8')
 username = cfg.get("userinfo", "username")
 password = cfg.get("userinfo", "password")
 test_url = cfg.get("config", "test_url")
-
+check_interval = int(cfg.get("config", "check_interval"))
 mac = "000000000000"  # 不需要更改
+
+
+def get_log_path():
+    log_path = ""
+
+    sysstr = platform.system()
+    if sysstr == "Windows":
+        log_path = cfg.get("log", "log_path_windows")
+    elif sysstr == "Linux":
+        log_path = cfg.get("log", "log_path_linux")
+
+    log_path = str.strip(log_path)
+
+    if log_path == "":
+        log_path = current_path
+
+    if not os.path.exists(log_path):
+        os.makedirs(log_path)
+
+    return log_path
+
+
+log_level = cfg.get("log", "log_level")
+if log_level == "INFO":
+    log_level = logging.INFO
+elif log_level == "error":
+    log_level = logging.ERROR
+
+log_path = os.path.join(get_log_path(), "link_dlut.log")
+logging.basicConfig(level=log_level, filename=log_path,
+                    filemode="a", format="%(asctime)s - %(levelname)s: %(message)s", encoding="utf-8")
+
+with open('des.js') as f:
+    ctx = execjs.compile(f.read())
 
 
 def login():
     wlan_user_ip = ""
     wlan_ac_ip = ""
     try:
-        response = requests.get(test_url, allow_redirects=False)
+        response = requests.get("http://" + test_url, allow_redirects=False)
         jump_url = response.headers.get("Location")
 
         if response.status_code == 302 and jump_url.split("/")[2] == "172.20.30.1":
             paras = jump_url.split('?')[1].split('&')
             wlan_user_ip = paras[0].split('=')[1]
             wlan_ac_ip = paras[2].split('=')[1]
-            print("需要登录")
+            logging.info("需要登录")
         else:
-            print("已经在线或未在校园网环境下")
+            logging.error("请检查设备是否处于校园网环境下")
             return False
     except Exception as e:
-        print("网络出错")
+        logging.error("网络出错，请检查设备是否处于校园网环境下")
+        logging.error("错误信息：" + str(e))
         return False
 
     service_url = f"http://172.20.30.2:8080/Self/sso_login?login_method=1&wlan_user_ip={wlan_user_ip}&wlan_user_ipv6=&wlan_user_mac={mac}&wlan_ac_ip={wlan_ac_ip}&wlan_ac_name=&mac_type=1&authex_enable=&type=1"
@@ -44,9 +84,7 @@ def login():
 
     lt = re.findall(r'name="lt" value="(.*?)"', response.text)[0]
     execution = re.findall(r'name="execution" value="(.*?)"', response.text)[0]
-    jsessionidcas = response.cookies.get("JSESSIONIDCAS")
-    with open('des.js') as f:
-        ctx = execjs.compile(f.read())
+
     rsa = ctx.call('strEnc', username+password+lt, '1', '2', '3')
 
     login_data = {
@@ -64,7 +102,7 @@ def login():
 
     ticket_url = response.headers.get("Location")
     if ticket_url is None:
-        print("用户名或密码可能错误")
+        logging.error("用户名或密码错误")
         return False
 
     ticket = ticket_url.split('&')[-1]
@@ -72,17 +110,19 @@ def login():
     dash_url = service_url + "&" + ticket
 
     session.get(dash_url)
+    logging.info("登录完成")
+    if (delay := ping(test_url, unit='ms')) is None or delay == False:
+        logging.error("完成登录后仍然无法使用网络，请检查账号是否欠费")
+    else:
+        logging.info(f"网络通畅，延迟为{delay}ms")
 
     return True
 
 
 if __name__ == '__main__':
-
-    login()
-    try:
-        if requests.get(test_url, allow_redirects=False).status_code == 200:
-            print("网络已畅通")
+    while True:
+        if (delay := ping(test_url, unit='ms')) is None or delay == False:
+            login()
         else:
-            print("登录失败")
-    except:
-        pass
+            logging.info(f"网络通畅，延迟为{delay}ms")
+        sleep(check_interval)
