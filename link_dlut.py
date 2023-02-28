@@ -59,17 +59,18 @@ def login():
     wlan_user_ip = ""
     wlan_ac_ip = ""
     try:
+        # 判断是否发生跳转
         response = requests.get("http://" + test_url, allow_redirects=False)
         jump_url = response.headers.get("Location")
-
-        if response.status_code == 302 and jump_url.split("/")[2] == "172.20.30.1":
-            paras = jump_url.split('?')[1].split('&')
-            wlan_user_ip = paras[0].split('=')[1]
-            wlan_ac_ip = paras[2].split('=')[1]
-            logging.info("需要登录")
-        else:
+        if response.status_code != 302 or jump_url.split("/")[2] != "172.20.30.1":
             logging.error("请检查设备是否处于校园网环境下")
             return False
+
+        paras = jump_url.split('?')[1].split('&')
+        wlan_user_ip = paras[0].split('=')[1]
+        wlan_ac_ip = paras[2].split('=')[1]
+        logging.info("正在登陆...")
+
     except Exception as e:
         logging.error("网络出错，请检查设备是否处于校园网环境下")
         logging.error("错误信息：" + str(e))
@@ -84,7 +85,6 @@ def login():
 
     lt = re.findall(r'name="lt" value="(.*?)"', response.text)[0]
     execution = re.findall(r'name="execution" value="(.*?)"', response.text)[0]
-
     rsa = ctx.call('strEnc', username+password+lt, '1', '2', '3')
 
     login_data = {
@@ -121,7 +121,7 @@ def login():
 
 if __name__ == '__main__':
     while True:
-        if (delay := ping(test_url, unit='ms')) is None or delay == False:
+        if (delay := ping(test_url, unit='ms', timeout=1)) is None or delay == False:
             login()
         else:
             logging.info(f"网络通畅，延迟为{delay}ms")
