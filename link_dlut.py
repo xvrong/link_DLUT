@@ -59,9 +59,15 @@ def login():
     wlan_user_ip = ""
     wlan_ac_ip = ""
     try:
-        # 判断是否发生跳转
+
         response = requests.get("http://" + test_url, allow_redirects=False)
         jump_url = response.headers.get("Location")
+
+        if response.status_code == 200:
+            logging.info("网络畅通，已登录或处于其他网络环境下")
+            return True
+
+        # 判断是否跳转到正确网址
         if response.status_code != 302 or jump_url.split("/")[2] != "172.20.30.1":
             logging.error("请检查设备是否处于校园网环境下")
             return False
@@ -120,6 +126,7 @@ def login():
 
 
 if __name__ == '__main__':
+    login()  # 启动脚本，尝试登录
     while True:
         if (delay := ping(test_url, unit='ms', timeout=1)) is None or delay == False:
             login()
